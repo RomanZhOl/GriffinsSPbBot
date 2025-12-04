@@ -20,8 +20,8 @@ async def insert_player(data: dict):
         await db.execute(
             """
             INSERT INTO team 
-            (name, surname, middlename, number, tg_username, tg_id, role_id, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (name, surname, middlename, number, tg_username, tg_id, role_id, position_id, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.get("name"),
@@ -31,6 +31,7 @@ async def insert_player(data: dict):
                 data.get("tg_username"),
                 data.get("tg_id"),
                 data.get("role_id"),
+                data.get("position_id"),
                 data.get("status", "active")
             )
         )
