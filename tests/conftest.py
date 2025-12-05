@@ -1,6 +1,7 @@
 """
 Фикстуры для тестирования Telegram бота
 """
+import aiosqlite
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import User, Chat, Message, CallbackQuery
 from aiogram.fsm.storage.base import StorageKey
+from bot.utils import db as db_module
 
 
 @pytest.fixture
@@ -162,3 +164,50 @@ def mock_role_filter():
         # По умолчанию фильтр пропускает всех
         mock_filter.return_value.__call__ = AsyncMock(return_value=True)
         yield mock_filter
+
+@pytest_asyncio.fixture
+async def temp_db(tmp_path):
+    db_file = tmp_path / "test.db"
+
+    async with aiosqlite.connect(db_file) as conn:
+        await conn.executescript("""
+        CREATE TABLE team (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER UNIQUE
+        );
+
+        CREATE TABLE roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT
+        );
+
+        CREATE TABLE player_roles (
+            player_id INTEGER,
+            role_id INTEGER
+        );
+        
+        CREATE TABLE positions (
+            id INTEGER,
+            position TEXT
+        );
+
+        INSERT INTO roles (role) VALUES ('player'), ('coach'), ('admin');
+        INSERT INTO team (tg_id) VALUES (123), (456);
+        INSERT INTO team (position_id) VALUES (2), (3);
+        INSERT INTO player_roles (player_id, role_id) VALUES
+            (1, 1),  -- player_id=1 => player
+            (1, 2),  -- player_id=1 => coach
+            (2, 3);  -- player_id=2 => admin
+        INSERT INTO positions (id, position) VALUES
+            (1, 'Rookie'),  
+            (2, 'QB'),  
+            (3, "WR"); 
+        """)
+        await conn.commit()
+
+    original_db_path = db_module.DB_PATH
+    db_module.DB_PATH = str(db_file)
+    try:
+        yield db_file
+    finally:
+        db_module.DB_PATH = original_db_path

@@ -7,7 +7,7 @@ from bot.handlers.add_player import (
     process_name,
     process_surname,
     process_tg_username,
-    process_role_callback,
+    process_role_choice,
     process_position_callback,
     process_confirmation, cancel_adding, cancel_adding_callback
 )
@@ -17,7 +17,7 @@ ROLE_COACH = 2
 ROLE_PLAYER = 3
 
 @pytest.mark.asyncio
-async def test_successful_add_player_with_position(message, callback, state, mock_db_functions):
+async def test_successful_add_coach_player_with_position(message, callback, state, mock_db_functions):
     """
     Тест: Успешное добавление игрока с выбором позиции
 
@@ -26,7 +26,7 @@ async def test_successful_add_player_with_position(message, callback, state, moc
     2. Вводим имя
     3. Вводим фамилию
     4. Вводим никнейм
-    5. Выбираем роль "Игрок"
+    5. Выбираем роль "Игрок + Тренер"
     6. Выбираем позицию "QB"
     7. Подтверждаем
     8. Проверяем, что данные сохранились
@@ -91,17 +91,17 @@ async def test_successful_add_player_with_position(message, callback, state, moc
     assert 'reply_markup' in call_kwargs
 
 
-    # ========== ШАГ 5: Выбор роли "Игрок" (role_id=3) ==========
+    # ========== ШАГ 5: Выбор роли "Игрок + Тренер" ==========
     callback.message.edit_text.reset_mock()
-    callback.data = "role:3"
-    await process_role_callback(callback, state)
+    callback.data = "role:both"
+    await process_role_choice(callback, state)
 
     # Проверки:
     callback.message.edit_text.assert_called_once()
     current_state = await state.get_state()
     assert current_state == AddPlayerStates.position.state
     data = await state.get_data()
-    assert data['role_id'] == ROLE_PLAYER
+    assert set(data['role_ids']) == {ROLE_PLAYER, ROLE_COACH}
     # Проверяем, что показаны кнопки с позициями
     call_kwargs = callback.message.edit_text.call_args[1]
     assert 'reply_markup' in call_kwargs
@@ -136,125 +136,13 @@ async def test_successful_add_player_with_position(message, callback, state, moc
     # - Функция insert_player была вызвана
     mock_db_functions['insert_player'].assert_called_once()
     # - В БД отправлены правильные данные
-    saved_data = mock_db_functions['insert_player'].call_args[0][0]
+    saved_data, saved_roles = mock_db_functions['insert_player'].call_args[0]
     assert saved_data['name'] == "Иван"
     assert saved_data['surname'] == "Петров"
     assert saved_data['tg_username'] == "ivan_petrov"
-    assert saved_data['role_id'] == 3
+    assert set(saved_roles) == {ROLE_PLAYER, ROLE_COACH}
     assert saved_data['position_id'] == 1
     assert saved_data['position_name'] == 'QB'
-    # - Состояние очищено
-    current_state = await state.get_state()
-    assert current_state is None
-    # - Показано сообщение об успехе
-    callback.message.edit_text.assert_called_once()
-    call_text = callback.message.edit_text.call_args[0][0]
-    assert "успешно" in call_text.lower() or "✅" in call_text
-
-@pytest.mark.asyncio
-async def test_successful_add_coach(message, callback, state, mock_db_functions):
-    """
-    Тест: Успешное добавление тренера
-
-    Сценарий:
-    1. Запускаем команду /add_player
-    2. Вводим имя
-    3. Вводим фамилию
-    4. Вводим никнейм
-    5. Выбираем роль "Тренер"
-    6. Подтверждаем
-    7. Проверяем, что данные сохранились
-    """
-
-    # ========== ШАГ 1: Начало добавления ==========
-    message.text = "/add_player"
-    await start_add_player(message, state)
-
-    # Проверки:
-    # - Вызван метод answer для отправки сообщения
-    message.answer.assert_called_once()
-    # - Состояние изменилось на "ввод имени"
-    current_state = await state.get_state()
-    assert current_state == AddPlayerStates.name.state
-    # - В сообщении есть текст про ввод имени
-    call_args = message.answer.call_args[0][0]
-    assert "имя игрока" in call_args.lower()
-
-
-    # ========== ШАГ 2: Ввод имени ==========
-    message.answer.reset_mock()  # Сбрасываем счётчик вызовов
-    message.text = "Пал"
-    await process_name(message, state)
-
-    # Проверки:
-    message.answer.assert_called_once()
-    current_state = await state.get_state()
-    assert current_state == AddPlayerStates.surname.state
-    # Проверяем, что имя сохранилось в state
-    data = await state.get_data()
-    assert data['name'] == "Пал"
-
-
-    # ========== ШАГ 3: Ввод фамилии ==========
-    message.answer.reset_mock()
-    message.text = "Саныч"
-    await process_surname(message, state)
-
-    # Проверки:
-    message.answer.assert_called_once()
-    current_state = await state.get_state()
-    assert current_state == AddPlayerStates.tg_username.state
-    data = await state.get_data()
-    assert data['surname'] == "Саныч"
-
-
-    # ========== ШАГ 4: Ввод никнейма ==========
-    message.answer.reset_mock()
-    message.text = "@pal_sanych"
-    await process_tg_username(message, state)
-
-    # Проверки:
-    message.answer.assert_called_once()
-    current_state = await state.get_state()
-    assert current_state == AddPlayerStates.role.state
-    data = await state.get_data()
-    # Проверяем, что @ был удалён
-    assert data['tg_username'] == "pal_sanych"
-    # Проверяем, что показаны кнопки выбора роли
-    call_kwargs = message.answer.call_args[1]
-    assert 'reply_markup' in call_kwargs
-
-
-    # ========== ШАГ 5: Выбор роли "Тренер" (role_id=1) ==========
-    callback.message.edit_text.reset_mock()
-    callback.data = "role:2"
-    await process_role_callback(callback, state)
-
-    # Проверки:
-    callback.message.edit_text.assert_called_once()
-    current_state = await state.get_state()
-    assert current_state == AddPlayerStates.confirmation.state
-    data = await state.get_data()
-    assert data['role_id'] == ROLE_COACH
-
-
-    # ========== ШАГ 6: Подтверждение ==========
-    callback.message.edit_text.reset_mock()
-    callback.data = "confirm:yes"
-    await process_confirmation(callback, state)
-
-    # Проверки:
-    # - Функция insert_player была вызвана
-    mock_db_functions['insert_player'].assert_called_once()
-    # - В БД отправлены правильные данные
-    saved_data = mock_db_functions['insert_player'].call_args[0][0]
-    assert saved_data['name'] == "Пал"
-    assert saved_data['surname'] == "Саныч"
-    assert saved_data['tg_username'] == "pal_sanych"
-    assert saved_data['role_id'] == 2
-    # Проверяем, что у тренера НЕТ позиции
-    assert 'position_id' not in saved_data
-    assert 'position_name' not in saved_data
     # - Состояние очищено
     current_state = await state.get_state()
     assert current_state is None
@@ -404,3 +292,27 @@ async def test_process_cancel(event_type, set_value, state_to_test, message, cal
     # Данные очищены
     assert await state.get_data() == {}
 
+
+
+
+@pytest.mark.asyncio
+async def test_add_player_only_coach_skips_position(callback, state):
+    """Тест: При роли тольrо тренер не предлагается к выбору позиция"""
+    # Устанавливаем состояние
+    await state.set_state(AddPlayerStates.role)
+    await state.update_data(
+        name="Иван",
+        surname="Петров",
+        tg_username="ivan_petrov"
+    )
+
+    callback.message.edit_text.reset_mock()
+    callback.data = "role:coach"
+    await process_role_choice(callback, state)
+    current_state = await state.get_state()
+
+    # Проверки:
+    callback.answer.assert_called_once()
+    assert current_state == AddPlayerStates.confirmation.state
+    call_text = callback.message.edit_text.call_args[0][0]
+    assert "Позиция" not in call_text

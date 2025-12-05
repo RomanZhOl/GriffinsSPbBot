@@ -1,13 +1,13 @@
 import aiosqlite
 from bot.config import DB_PATH
 
-async def get_user_role(tg_id: int) -> list[str] | None:
+async def get_user_role(tg_id: int, db_path: str | None = None) -> list[str] | None:
     """
     Возвращает список ролей пользователя по tg_id.
     Если игрок не найден — возвращает None.
     Если игрок найден — возвращает список строк ролей (['admin', 'coach', 'player']).
     """
-
+    db_path = db_path or DB_PATH
     query = """
         SELECT r.role
         FROM team t
@@ -17,7 +17,7 @@ async def get_user_role(tg_id: int) -> list[str] | None:
     """
 
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(db_path) as db:
             cursor = await db.execute(query, (tg_id,))
             rows = await cursor.fetchall()  # fetchall вместо fetchone!
             await cursor.close()
@@ -32,13 +32,13 @@ async def get_user_role(tg_id: int) -> list[str] | None:
 
 
 
-async def list_players():
+async def list_players(db_path=DB_PATH):
     """
     Получаем список всех игроков/тренеров с их ролями.
     Роли возвращаются как строка через запятую: "admin, coach"
     """
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
             query = """SELECT
                         t.id,
@@ -67,21 +67,36 @@ async def list_players():
         print(f"Ошибка при получении списка игроков: {e}")
         return []
 
-async def insert_player(data: dict, role_ids: list[int]):
+async def insert_player(data: dict, role_ids: list[int], db_path=DB_PATH):
     """
     Вставляет игрока в таблицу team и назначает ему роли.
     data — словарь с ключами:
         name, surname, middlename, number, tg_username, tg_id, position_id, status
     role_ids — список ID ролей, например [3] или [2,3]
     """
+    if not role_ids:
+        raise ValueError("Игрок должен иметь хотя бы одну роль")
+
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            # Проверка на дубликат по tg_id или tg_username
-            query = "SELECT id FROM team WHERE tg_id = ? OR tg_username = ?"
-            async with db.execute(query, (data.get("tg_id"), data.get("tg_username"))) as cursor:
-                exists = await cursor.fetchone()
-                if exists:
-                    return False  # игрок уже есть
+        async with aiosqlite.connect(db_path) as db:
+            conditions = []
+            params = []
+
+            if data.get("tg_id"):
+                conditions.append("tg_id = ?")
+                params.append(data["tg_id"])
+
+            if data.get("tg_username"):
+                conditions.append("tg_username = ?")
+                params.append(data["tg_username"])
+
+            if conditions:
+                # Проверка на дубликат по tg_id или tg_username
+                query = f"SELECT id FROM team WHERE {' OR '.join(conditions)}"
+                async with db.execute(query, tuple(params)) as cursor:
+                    exists = await cursor.fetchone()
+                    if exists:
+                        return False # игрок уже есть
 
             # Вставка игрока в team (БЕЗ role_id)
             cursor = await db.execute(
@@ -118,11 +133,8 @@ async def insert_player(data: dict, role_ids: list[int]):
         print(f"Ошибка при добавлении игрока: {e}")
         return False
 
-
-
-
-async def get_positions():
-    async with aiosqlite.connect(DB_PATH) as db:
+async def get_positions(db_path=DB_PATH):
+    async with aiosqlite.connect(db_path) as db:
         cursor = await db.execute("SELECT id, position FROM positions ORDER BY id")
         rows = await cursor.fetchall()
         await cursor.close()
