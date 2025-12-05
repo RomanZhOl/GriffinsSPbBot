@@ -1,7 +1,7 @@
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
-from bot.utils.db import list_players
+from bot.utils.db import list_players, get_positions
 from bot.utils.role_filter import RoleFilter
 import logging
 
@@ -34,6 +34,36 @@ async def show_players(message: Message):
         p for p in all_players
         if p.get("roles") and "player" in p["roles"].split(", ")
     ]
+
+    # Получаем все позиции из БД
+    positions_rows = await get_positions()
+    valid_positions = {pos[1].upper() for pos in positions_rows}
+
+    # Разбор аргумента команды
+    args = None
+    if message.text:
+        parts = message.text.strip().split(maxsplit=1)
+        if len(parts) == 2:
+            args = parts[1].strip().upper()
+
+    if args and args not in valid_positions:
+        await message.answer(
+            f"❌ Неверная позиция '{args}'.\n"
+            f"Выберите из списка: {', '.join(valid_positions)}\n"
+            f"Или отправьте команду без параметра, чтобы получить всех игроков."
+        )
+        return
+
+    # Если указан аргумент, фильтруем по позиции
+    if args:
+        players = [
+            p for p in players
+            if p.get("position", "").upper() == args
+        ]
+
+    if not players:
+        await message.answer("📭 Игроков с такой позицией не найдено.")
+        return
 
     # ✅ Формируем красивый текст
     text = ["📋 <b>Список игроков:</b>\n"]
