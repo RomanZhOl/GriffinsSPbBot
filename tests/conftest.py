@@ -135,20 +135,42 @@ def mock_db_functions():
     """
     Фикстура: мокает все функции работы с БД
     """
-    with patch('bot.handlers.add_player.insert_player', new_callable=AsyncMock) as mock_insert, \
-            patch('bot.handlers.add_player.get_positions', new_callable=AsyncMock) as mock_get_pos:
+    with patch('bot.handlers.list_players.list_players', new_callable=AsyncMock) as mock_list_players, \
+         patch('bot.handlers.list_players.get_positions', new_callable=AsyncMock) as mock_get_pos_list, \
+         patch('bot.handlers.add_player.insert_player', new_callable=AsyncMock) as mock_insert, \
+         patch('bot.handlers.add_player.get_positions', new_callable=AsyncMock) as mock_get_pos_add:
+
 
         # Настраиваем дефолтные возвращаемые значения
+        mock_list_players.return_value = []
         mock_insert.return_value = True
-        mock_get_pos.return_value = [
+        mock_get_pos_list.return_value = [
             (1, 'QB'),
             (2, 'RB'),
-            (3, 'WR')
+            (3, 'WR'),
+            (4, 'LB'),
+            (5, 'OL'),
+            (6, 'DL'),
+            (7, 'TE'),
+            (8, 'CB'),
+            (9, 'ROOKIE'),
+        ]
+        mock_get_pos_add.return_value = [
+            (1, 'QB'),
+            (2, 'RB'),
+            (3, 'WR'),
+            (4, 'LB'),
+            (5, 'OL'),
+            (6, 'DL'),
+            (7, 'TE'),
+            (8, 'CB'),
+            (9, 'ROOKIE'),
         ]
 
         yield {
-            'insert_player': mock_insert,
-            'get_positions': mock_get_pos
+            'list_players': mock_list_players,
+            'get_positions': mock_get_pos_list,
+            'insert_player': mock_insert
         }
 
 

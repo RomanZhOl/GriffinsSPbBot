@@ -6,12 +6,19 @@ from aiogram.fsm.context import FSMContext
 from bot.utils.db import insert_player, get_positions
 from bot.utils.role_filter import RoleFilter
 from bot.utils.states import AddPlayerStates
+import logging
 
 # Константы для ролей
 ROLE_COACH = 2
 ROLE_PLAYER = 3
 
 router = Router()
+
+CANCEL_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
+    ]
+)
 
 @router.callback_query(F.data == "cancel")
 async def cancel_adding_callback(callback: CallbackQuery, state: FSMContext):
@@ -28,11 +35,7 @@ async def cancel_adding(message: Message, state: FSMContext):
 @router.message(Command("add_player"), RoleFilter(allowed_roles=["admin", "coach"]))
 async def start_add_player(message: Message, state: FSMContext):
     await state.set_state(AddPlayerStates.name)
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
-        ]
-    )
+    keyboard = CANCEL_KEYBOARD
     await message.answer(
         "Начинаем добавление игрока.\n"
         "Введите имя игрока:",
@@ -42,11 +45,7 @@ async def start_add_player(message: Message, state: FSMContext):
 #Шаг добавления имени
 @router.message(AddPlayerStates.name)
 async def process_name(message: Message, state: FSMContext):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
-        ]
-    )
+    keyboard = CANCEL_KEYBOARD
     name = message.text.strip()
 
     if not name or len(name) < 2:
@@ -62,11 +61,7 @@ async def process_name(message: Message, state: FSMContext):
 #Шаг добавления фамилии
 @router.message(AddPlayerStates.surname)
 async def process_surname(message: Message, state: FSMContext):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
-        ]
-    )
+    keyboard = CANCEL_KEYBOARD
     surname = message.text.strip()
 
     if not surname or len(surname) < 2:
@@ -82,11 +77,7 @@ async def process_surname(message: Message, state: FSMContext):
 #Шаг добавления tg_username
 @router.message(AddPlayerStates.tg_username)
 async def process_tg_username(message: Message, state: FSMContext):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
-        ]
-    )
+    keyboard = CANCEL_KEYBOARD
     tg_username = message.text.strip().lstrip("@")
 
     if not tg_username or len(tg_username) < 5:
@@ -139,24 +130,8 @@ async def process_role_choice(callback: CallbackQuery, state: FSMContext):
         # Только тренер — формируем текст подтверждения напрямую
         data = await state.get_data()
         roles_text = ", ".join(["Игрок" if r==ROLE_PLAYER else "Тренер" for r in role_ids])
-        confirmation_text = (
-            f"Проверьте данные:\n\n"
-            f"Имя: {data['name']}\n"
-            f"Фамилия: {data['surname']}\n"
-            f"Telegram: @{data['tg_username']}\n"
-            f"Роль: {roles_text}\n\n"
-            f"Всё верно?"
-        )
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="✅ Подтвердить", callback_data="confirm:yes"),
-                    InlineKeyboardButton(text="❌ Отменить", callback_data="confirm:no")
-                ]
-            ]
-        )
+        await show_confirmation(callback, state)
         await state.set_state(AddPlayerStates.confirmation)
-        await callback.message.edit_text(confirmation_text, reply_markup=keyboard)
 
 
 
@@ -164,10 +139,8 @@ async def process_role_choice(callback: CallbackQuery, state: FSMContext):
 async def process_position_callback(callback: CallbackQuery, state: FSMContext):
     position_id = int(callback.data.split(":")[1])
     positions = await get_positions()
-    for pos in positions:
-        if pos[0] == position_id:
-            position_name = pos[1]
-            break
+    positions_dict = {pos[0]: pos[1] for pos in positions}
+    position_name = positions_dict.get(position_id)
     await state.update_data(position_id=position_id, position_name=position_name)
     await show_confirmation(callback, state)
     await callback.answer()
@@ -221,12 +194,13 @@ async def process_confirmation(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     role_ids = data.get("role_ids", [])
 
-    # Логируем данные перед сохранением
-    import logging
-    logging.info("=== ДАННЫЕ ДЛЯ СОХРАНЕНИЯ ===")
-    logging.info(f"Player data: {data}")
-    logging.info(f"Role IDs: {data.get('role_ids')}")
-    logging.info("===============================")
+    if not role_ids:
+        await callback.message.edit_text("Ошибка: роль не выбрана")
+        await state.clear()
+        await callback.answer()
+        return
+
+    logging.debug(f"Player data: {data}")  # debug вместо info для отладочных сообщений
 
     try:
         success = await insert_player(data, role_ids)
