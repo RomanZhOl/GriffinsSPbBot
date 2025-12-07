@@ -1,9 +1,10 @@
 """
-Тесты для модуля список игроков
+Тесты для модуля список игроков -- команда /players
 """
 
 import pytest
 from bot.handlers.list_players import show_players
+from bot.utils.role_filter import RoleFilter
 
 mock_players_data = [
     {
@@ -14,7 +15,7 @@ mock_players_data = [
         'position': 'QB',
         'number': '10',
         'status': 'active',
-        'roles': 'player'  # Только игрок
+        'roles': 'player'
     },
     {
         'id': 2,
@@ -24,7 +25,7 @@ mock_players_data = [
         'position': 'QB',
         'number': '12',
         'status': 'injured',
-        'roles': 'player'  # Только игрок
+        'roles': 'player'
     },
     {
         'id': 3,
@@ -34,7 +35,7 @@ mock_players_data = [
         'position': None,
         'number': None,
         'status': 'active',
-        'roles': 'coach'  # Только тренер (должен быть исключён)
+        'roles': 'coach'
     },
     {
         'id': 4,
@@ -44,12 +45,18 @@ mock_players_data = [
         'position': 'LB',
         'number': '69',
         'status': 'inactive',
-        'roles': 'coach, player'  # Тренер + игрок (должен отображаться)
+        'roles': 'coach, player, admin'
     }
 ]
 
 @pytest.mark.asyncio
-async def test_show_all_players(message, mock_db_functions):
+@pytest.mark.parametrize("roles", [
+    ['coach'],
+    ['admin'],
+    ['coach', 'admin'],
+    ['player', 'admin'],
+])
+async def test_show_all_players(roles, message, mock_db_functions,mock_role_filter):
     """
     Тест: команда /players без параметров возвращает всех игроков.
 
@@ -61,6 +68,7 @@ async def test_show_all_players(message, mock_db_functions):
 
     # ========== ARRANGE (Подготовка) ==========
     # Настраиваем мок list_players
+    mock_role_filter['get_user_role'].return_value = roles
     mock_db_functions['list_players'].return_value = mock_players_data
 
     # Команда без параметров
@@ -173,7 +181,7 @@ async def test_show_players_only_coach_db(message, mock_db_functions):
 
     # ========== ARRANGE (Подготовка) ==========
 
-    # Мокаем данные из БД: 2 игрока + 1 тренер
+    # Мокаем данные из БД: 1 тренер
     mock_players_data = [
         {
             'id': 1,
