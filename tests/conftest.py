@@ -195,7 +195,15 @@ async def temp_db(tmp_path):
         await conn.executescript("""
         CREATE TABLE team (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tg_id INTEGER UNIQUE
+            name TEXT,
+            surname TEXT,
+            middlename TEXT,
+            number TEXT,
+            tg_username TEXT UNIQUE,
+            tg_id INTEGER UNIQUE,
+            position_id INTEGER,
+            status TEXT DEFAULT 'active',
+            FOREIGN KEY (position_id) REFERENCES positions(id)
         );
 
         CREATE TABLE roles (

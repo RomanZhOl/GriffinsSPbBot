@@ -5,10 +5,10 @@ from bot.utils import db as db_module
 async def test_get_user_role(temp_db):
 
     roles = await db_module.get_user_role(123)
-    assert set(roles) == {'player', 'coach'}
+    assert set(roles.split(', ')) == {'player', 'coach'}
 
     roles = await db_module.get_user_role(456)
-    assert roles == ['admin']
+    assert roles == 'admin'
 
     roles = await db_module.get_user_role(999)
     assert roles is None
@@ -22,7 +22,7 @@ async def test_get_positions(temp_db):
     """
 
     # Получаем позиции
-    positions = await db_module.get_positions(temp_db)
+    positions = await db_module.get_positions()
 
     # Проверяем, что вернулся список
     assert isinstance(positions, list)

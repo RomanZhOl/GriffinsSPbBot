@@ -7,3 +7,8 @@ class AddPlayerStates(StatesGroup):
     role = State()
     position = State()
     confirmation = State()
+
+class CreatePollStates(StatesGroup):
+    question = State()
+    options = State()
+    confirmation = State()
