@@ -3,10 +3,12 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
-from bot.utils.db import get_chat_by_position
+from bot.utils.db import get_chat_by_position, get_all_chats
+from bot.utils.notifications import build_players_mention_text
 from bot.utils.poll_question import get_training_poll_question
 from bot.utils.role_filter import RoleFilter
 from bot.utils.states import CreatePollStates
+
 
 router = Router()
 
@@ -39,7 +41,7 @@ async def start_create_poll(message: Message, state: FSMContext):
     else:
         await interactive_poll(message, state)
 
-async def quick_poll (message: Message, topic: str):
+async def quick_poll(message: Message, topic: str, notify_players: bool = False):
     """Быстрое создание опроса с предустановкой"""
     topic = topic.upper().strip()
 
@@ -60,8 +62,17 @@ async def quick_poll (message: Message, topic: str):
         question=question,
         options=options,
         is_anonymous=False
-        )
+    )
     await message.answer(f"Опрос для {topic} отправлен.")
+    notify_players = True
+    # Уведомление игроков
+    if notify_players:
+        mention_text = await build_players_mention_text(position=topic)
+    await message.bot.send_message(
+        chat_id=chat_id,
+        message_thread_id=thread_id,
+        text=f"Новый опрос! {mention_text}"
+    )
 
 
 async def interactive_poll(message: Message, state: FSMContext):
@@ -88,6 +99,7 @@ async def process_poll_question(message: Message, state: FSMContext):
                          reply_markup=keyboard)
 
 
+# Шаг: ввод вариантов опроса
 @router.message(CreatePollStates.options)
 async def process_poll_options(message: Message, state: FSMContext):
     options_text = message.text.strip()
@@ -105,12 +117,59 @@ async def process_poll_options(message: Message, state: FSMContext):
 
     # Сохраняем варианты в FSM
     await state.update_data(options=options)
+    await state.set_state(CreatePollStates.chat)
+
+    # Получаем список чатов из БД
+    chats = await get_all_chats()
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+                            [InlineKeyboardButton(text=name, callback_data=f"chats:{chat_id}:{thread_id}:{name}")]
+                            for chat_id, thread_id, name in chats
+                        ] + [[InlineKeyboardButton(text="Отмена", callback_data="cancel")]]
+    )
+    await message.answer("Выберите для кого опрос:", reply_markup=keyboard)
+
+
+# Шаг: выбор чата
+@router.callback_query(F.data.startswith("chats:"), CreatePollStates.chat)
+async def process_chat_choice(callback: CallbackQuery, state: FSMContext):
+    _, chat_id, thread_id_raw, chat_name = callback.data.split(":")
+
+    # thread_id может быть пустым -> None
+    thread_id = int(thread_id_raw) if thread_id_raw.isdigit() else None
+
+    await state.update_data(chat_id=int(chat_id), thread_id=thread_id, chat_name=chat_name)
+    await state.set_state(CreatePollStates.notify_players)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да", callback_data="notify:yes")],
+            [InlineKeyboardButton(text="Нет", callback_data="notify:no")],
+            [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
+        ]
+    )
+    await callback.message.edit_text(
+        f"Вы выбрали чат: {chat_name}\n\n"
+        "Хотите уведомить игроков о новом опросе?",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+# Шаг: выбор уведомления
+@router.callback_query(F.data.startswith("notify:"), CreatePollStates.notify_players)
+async def process_notify_choice(callback: CallbackQuery, state: FSMContext):
+    choice = callback.data.split(":")[1]
+    notify = choice == "yes"
+    await state.update_data(notify_players=notify)
     await state.set_state(CreatePollStates.confirmation)
 
-    # Получаем вопрос из FSM
     data = await state.get_data()
     question = data.get("question")
+    options = data.get("options", [])
+    chat_name = data.get("chat_name", "не указан")
 
+    options_display = "\n".join(f"{idx+1}. {opt}" for idx, opt in enumerate(options))
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -120,15 +179,17 @@ async def process_poll_options(message: Message, state: FSMContext):
         ]
     )
 
-    # Отправляем сообщение с подтверждением
-    options_display = "\n".join(f"{idx+1}. {opt}" for idx, opt in enumerate(options))
-    await message.answer(
+    await callback.message.edit_text(
         f"Проверьте опрос перед созданием:\n\n"
         f"Вопрос: {question}\n"
-        f"Варианты:\n{options_display}",
+        f"Варианты:\n{options_display}\n"
+        f"Чат: {chat_name}\n"
+        f"Уведомить игроков: {'Да' if notify else 'Нет'}",
         reply_markup=keyboard
     )
+    await callback.answer()
 
+# Шаг: подтверждение создания опроса
 @router.callback_query(F.data.startswith("confirm:"), CreatePollStates.confirmation)
 async def confirm_poll_callback(callback: CallbackQuery, state: FSMContext):
     action = callback.data.split(":")[1]
@@ -143,20 +204,45 @@ async def confirm_poll_callback(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     question = data.get("question")
     options = data.get("options", [])
+    chat_id = data.get("chat_id")
+    thread_id = data.get("thread_id")
+    chat_name = data.get("chat_name")
+    notify_players = data.get("notify_players", False)
 
-    if not question or not options:
+    if not question or not options or not chat_id:
         await callback.message.edit_text("Ошибка: нет данных для опроса.")
         await state.clear()
         await callback.answer()
         return
 
-    sent_poll = await callback.bot.send_poll(
-        chat_id=POLL_CHANNEL_ID,
-        message_thread_id=THREAD_CHANNEL_ID,
-        question=question,
-        options=options,
-        is_anonymous=False
-    )
+    if thread_id:
+        sent_poll = await callback.bot.send_poll(
+            chat_id=chat_id,
+            message_thread_id=thread_id,
+            question=question,
+            options=options,
+            is_anonymous=False
+        )
+    else:
+        sent_poll = await callback.bot.send_poll(
+            chat_id=chat_id,
+            question=question,
+            options=options,
+            is_anonymous=False
+            )
+
+    # Уведомление игроков
+    if notify_players:
+        if chat_name == "ALL":
+            mention_text = await build_players_mention_text()  # без фильтра по позиции
+        else:
+            mention_text = await build_players_mention_text(position=chat_name)
+
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            message_thread_id=thread_id,
+            text=f"Новый опрос! {mention_text}"
+        )
 
     await callback.message.edit_text(f"Опрос создан! ID: {sent_poll.message_id}")
     await state.clear()
