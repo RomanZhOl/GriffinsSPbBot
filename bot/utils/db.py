@@ -1,13 +1,18 @@
+import logging
+
 import aiosqlite
 from bot.config import DB_PATH
 
 
-async def insert_player(data: dict):
+async def insert_player(data: dict, role_ids: list[int] | None = None, db_path: str = DB_PATH) -> bool:
     """
-    Вставляет игрока в таблицу team.
+    Вставляет игрока в таблицу team и роли в player_roles.
     data — словарь с ключами:
-        name, surname, middlename, number, tg_username, tg_id, role_id, status
+        name, surname, middlename, number, tg_username, tg_id, position_id, status
+    role_ids — список id ролей (из таблицы roles), например [2] или [2,3]
+    Возвращает True, если игрок создан; False если игрок уже существует (по tg_id или tg_username).
     """
+
     async with aiosqlite.connect(DB_PATH) as db:
         # Проверка на дубликат по tg_id или tg_username
         query = "SELECT id FROM team WHERE tg_id = ? OR tg_username = ?"
@@ -17,11 +22,11 @@ async def insert_player(data: dict):
                 return False  # игрок уже есть
 
         # Вставка игрока
-        await db.execute(
+        cursor = await db.execute(
             """
             INSERT INTO team 
-            (name, surname, middlename, number, tg_username, tg_id, role_id, position_id, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (name, surname, middlename, number, tg_username, tg_id, position_id, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.get("name"),
@@ -30,11 +35,22 @@ async def insert_player(data: dict):
                 data.get("number"),
                 data.get("tg_username"),
                 data.get("tg_id"),
-                data.get("role_id"),
                 data.get("position_id"),
                 data.get("status", "active")
             )
         )
+
+        player_id = cursor.lastrowid
+
+        # Вставка ролей (если есть)
+        if role_ids:
+            # Формируем кортежи (player_id, role_id)
+            values = [(player_id, int(rid)) for rid in role_ids]
+            await db.executemany(
+                "INSERT OR IGNORE INTO player_roles (player_id, role_id) VALUES (?, ?)",
+                values
+            )
+
         await db.commit()
         return True
 
@@ -55,12 +71,14 @@ async def get_user_role(tg_id: int) -> str | None:
     """
 
     query = """
-        SELECT r.role
-        FROM team t
-        JOIN roles r ON t.role_id = r.id
-        WHERE t.tg_id = ?
-        LIMIT 1
-    """
+            SELECT GROUP_CONCAT(r.role, ', ') as roles
+            FROM team t
+            LEFT JOIN player_roles pr ON t.id = pr.player_id
+            LEFT JOIN roles r ON pr.role_id = r.id
+            WHERE t.tg_id = ?
+            GROUP BY t.id
+            LIMIT 1
+        """
 
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(query, (tg_id,))
@@ -68,3 +86,64 @@ async def get_user_role(tg_id: int) -> str | None:
         await cursor.close()
 
         return row[0] if row else None
+
+async def list_players(db_path=DB_PATH):
+    """
+    Получаем список всех игроков/тренеров с их ролями.
+    Роли возвращаются как строка через запятую: "admin, coach"
+    """
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            query = """
+                SELECT
+                    t.id,
+                    t.name,
+                    t.surname,
+                    t.middlename,
+                    t.number,
+                    t.tg_username,
+                    t.tg_id,
+                    t.status,
+                    p.position,
+                    COALESCE(GROUP_CONCAT(r.role, ', '), '') as roles
+                FROM team t
+                LEFT JOIN positions p ON t.position_id = p.id
+                LEFT JOIN player_roles pr ON t.id = pr.player_id
+                LEFT JOIN roles r ON pr.role_id = r.id
+                GROUP BY t.id
+                ORDER BY t.name
+            """
+            cursor = await db.execute(query)
+            rows = await cursor.fetchall()
+            result = [dict(row) for row in rows]
+            logging.info(f"[list_players] Получено {len(result)} записей из базы")
+            for r in result:
+                logging.info(f"[list_players] {r}")
+
+            return result
+    except Exception as e:
+        logging.error(f"Ошибка при получении списка игроков: {e}")
+        return []
+
+async def get_chat_by_position(position_name: str):
+    """Возвращает кортеж (chat_id, thread_id) по названию позиции."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT id FROM positions WHERE position = ?",
+            (position_name,)
+        )
+        pos_row = await cursor.fetchone()
+        if not pos_row:
+            return None, None
+        position_id = pos_row[0]
+
+        cursor = await db.execute(
+            "SELECT chat_id, thread_id FROM chats WHERE position_id = ?",
+            (position_id,)
+        )
+        chat_row = await cursor.fetchone()
+        if not chat_row:
+            return None, None
+
+        return chat_row[0], chat_row[1]

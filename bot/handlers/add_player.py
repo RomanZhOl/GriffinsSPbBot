@@ -20,6 +20,13 @@ CANCEL_KEYBOARD = InlineKeyboardMarkup(
     ]
 )
 
+SKIP_KEYBOARD = keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="Пропустить", callback_data="skip")],
+        [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
+    ]
+)
+
 @router.callback_query(F.data == "cancel")
 async def cancel_adding_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -30,6 +37,12 @@ async def cancel_adding_callback(callback: CallbackQuery, state: FSMContext):
 async def cancel_adding(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Добавление игрока отменено.")
+
+@router.callback_query(F.data == "skip", AddPlayerStates.tg_username)
+async def skip_tg_username(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(tg_username=None)
+    await callback.answer()
+    await move_to_role_step(callback.message, state)
 
 #Вход в FSM
 @router.message(Command("add_player"), RoleFilter(allowed_roles=["admin", "coach"]))
@@ -72,20 +85,37 @@ async def process_surname(message: Message, state: FSMContext):
     await state.update_data(surname=surname)
     await state.set_state(AddPlayerStates.tg_username)
     await message.answer("Введите никнейм Telegram игрока (с @ или без):",
-                         reply_markup=keyboard)
+                         reply_markup=SKIP_KEYBOARD)
 
 #Шаг добавления tg_username
 @router.message(AddPlayerStates.tg_username)
 async def process_tg_username(message: Message, state: FSMContext):
-    keyboard = CANCEL_KEYBOARD
+    keyboard = SKIP_KEYBOARD
+
     tg_username = message.text.strip().lstrip("@")
 
-    if not tg_username or len(tg_username) < 5:
-        await message.answer("Никнейм Telegram должен содержать минимум 5 символов. Попробуйте ещё раз:",
-                             reply_markup=keyboard)
+    if tg_username:
+        if len(tg_username) < 5:
+            await message.answer(
+                "Никнейм Telegram должен содержать минимум 5 символов.\n"
+                "Либо нажмите «Пропустить».",
+                reply_markup=keyboard
+            )
+            return
+
+        await state.update_data(tg_username=tg_username)
+    else:
+        # Пустой ввод → показываем кнопку пропуска
+        await message.answer(
+            "Введите никнейм Telegram (минимум 5 символов) или нажмите «Пропустить».",
+            reply_markup=keyboard
+        )
         return
 
-    await state.update_data(tg_username=tg_username)
+    # Переход к выбору роли
+    await move_to_role_step(message, state)
+
+async def move_to_role_step(message: Message, state: FSMContext):
     await state.set_state(AddPlayerStates.role)
 
     keyboard = InlineKeyboardMarkup(

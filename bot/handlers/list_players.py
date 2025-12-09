@@ -53,8 +53,9 @@ def format_person_line(person: dict, index: int, show_position: bool = True) -> 
 
 @router.message(Command("players"), RoleFilter(allowed_roles=["admin", "coach"]))
 async def show_players(message: Message):
+    logging.info(f"[show_players] Вызов команды от {message.from_user.id}, текст: {message.text}")
     all_players = await list_players()
-    logging.info(f"Запрошен список из {len(all_players)} игроков")
+    logging.info(f"[show_players] Список игроков получен: {all_players}")
 
     # Фильтруем только игроков
     players = [p for p in all_players if has_role(p, "player")]
@@ -101,6 +102,12 @@ async def show_players(message: Message):
 
 @router.message(Command("coaches"), RoleFilter(allowed_roles=["admin", "coach"]))
 async def show_coaches(message: Message):
+    # Разбор аргумента команды
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) > 1:
+        await message.answer("❌ Команда /coaches не принимает аргументы.")
+        return
+    
     all_players = await list_players()
     logging.info(f"Запрошен список тренеров")
 

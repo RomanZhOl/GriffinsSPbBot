@@ -41,7 +41,7 @@ async def create_all_tables():
             surname TEXT NOT NULL,
             middlename TEXT,
             number TEXT,
-            tg_username TEXT UNIQUE,
+            tg_username TEXT,
             tg_id INTEGER UNIQUE,
             position_id INTEGER,
             status TEXT DEFAULT 'active',
@@ -57,6 +57,18 @@ async def create_all_tables():
             PRIMARY KEY (player_id, role_id),
             FOREIGN KEY (player_id) REFERENCES team(id) ON DELETE CASCADE,
             FOREIGN KEY (role_id) REFERENCES roles(id)
+        )
+        """)
+
+        # Создаём таблицу chats
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS chats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT NOT NULL,
+            thread_id TEXT NOT NULL,
+            position_id INTEGER,
+            chat_name TEXT,
+            FOREIGN KEY (position_id) REFERENCES positions(id)
         )
         """)
 
@@ -102,3 +114,39 @@ async def create_all_tables():
 
 if __name__ == "__main__":
     asyncio.run(create_all_tables())
+
+async def list_players(db_path=DB_PATH):
+    """
+    Получаем список всех игроков/тренеров с их ролями.
+    Роли возвращаются как строка через запятую: "admin, coach"
+    """
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            query = """SELECT
+                        t.id,
+                        t.name,
+                        t.surname,
+                        t.middlename,
+                        t.number,
+                        t.tg_username,
+                        t.tg_id,
+                        t.status,
+                        p.position,
+                        GROUP_CONCAT(r.role, ', ') as roles
+                    FROM team t
+                    LEFT JOIN positions p ON t.position_id = p.id
+                    LEFT JOIN player_roles pr ON t.id = pr.player_id
+                    LEFT JOIN roles r ON pr.role_id = r.id
+                    GROUP BY t.id
+                    ORDER BY t.name
+                """
+
+            cursor = await db.execute(query)
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    except Exception as e:
+        print(f"Ошибка при получении списка игроков: {e}")
+        return []
+
