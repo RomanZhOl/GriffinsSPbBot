@@ -12,3 +12,5 @@ class CreatePollStates(StatesGroup):
     question = State()
     options = State()
     confirmation = State()
+    chat = State()
+    notify_players =State()

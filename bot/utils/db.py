@@ -147,3 +147,17 @@ async def get_chat_by_position(position_name: str):
             return None, None
 
         return chat_row[0], chat_row[1]
+
+async def get_all_chats(db_path: str = DB_PATH) -> list[tuple[int, int, str]]:
+    """
+    Возвращает список всех чатов для опросов.
+
+    Каждая запись — кортеж (chat_id, thread_id, chat_name)
+    """
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "SELECT chat_id, thread_id, chat_name FROM chats ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [(row[0], row[1], row[2]) for row in rows]
