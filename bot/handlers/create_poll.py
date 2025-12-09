@@ -4,14 +4,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
 from bot.utils.db import get_chat_by_position
-from data.preset_polls import PRESET_POLLS, TOPIC_IDS
+from bot.utils.poll_question import get_training_poll_question
 from bot.utils.role_filter import RoleFilter
 from bot.utils.states import CreatePollStates
 
 router = Router()
-
-POLL_CHANNEL_ID = -1003400681585
-THREAD_CHANNEL_ID = 2
 
 CANCEL_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -38,29 +35,37 @@ async def start_create_poll(message: Message, state: FSMContext):
     args = parts[1].strip() if len(parts) > 1 else None
 
     if args:
-        topic = args.upper()  # OL, QB и т.д.
-        if topic not in PRESET_POLLS:
-            await message.answer(f"Нет предустановленного опроса для топика {topic}.")
-            return
+        await quick_poll(message, args)
+    else:
+        await interactive_poll(message, state)
 
-        poll = PRESET_POLLS[topic]
-        chat_id, thread_id = await get_chat_by_position(topic)
+async def quick_poll (message: Message, topic: str):
+    """Быстрое создание опроса с предустановкой"""
+    topic = topic.upper().strip()
 
-        if not chat_id:
-            await message.answer(f"Не удалось найти чат для топика {topic}.")
-            return
-
-        # Отправляем опрос в конкретный топик
-        await message.bot.send_poll(
-            chat_id=POLL_CHANNEL_ID,
-            message_thread_id=thread_id,
-            question=poll["question"],
-            options=poll["options"],
-            is_anonymous=True
-        )
-        await message.answer(f"Опрос для {topic} отправлен.")
+    # Определяем чат и тред по позиции
+    chat_id, thread_id = await get_chat_by_position(topic)
+    if not chat_id:
+        await message.answer(f"Не удалось найти чат для топика {topic}.")
         return
 
+    # Формируем динамический вопрос по дню недели/времени
+    question = get_training_poll_question(topic)
+    options = ["Буду", "Не буду", "Тренер"]
+
+    # Отправляем опрос в конкретный топик
+    await message.bot.send_poll(
+        chat_id=chat_id,
+        message_thread_id=thread_id,
+        question=question,
+        options=options,
+        is_anonymous=False
+        )
+    await message.answer(f"Опрос для {topic} отправлен.")
+
+
+async def interactive_poll(message: Message, state: FSMContext):
+    """Интерактивное создание опроса через FSM"""
     await state.set_state(CreatePollStates.question)
     keyboard = CANCEL_KEYBOARD
     await message.answer("Введите вопрос для опроса:",
@@ -125,7 +130,7 @@ async def process_poll_options(message: Message, state: FSMContext):
     )
 
 @router.callback_query(F.data.startswith("confirm:"), CreatePollStates.confirmation)
-async def confirm_poll_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
+async def confirm_poll_callback(callback: CallbackQuery, state: FSMContext):
     action = callback.data.split(":")[1]
 
     if action == "no":
@@ -145,12 +150,12 @@ async def confirm_poll_callback(callback: CallbackQuery, state: FSMContext, bot:
         await callback.answer()
         return
 
-    sent_poll = await bot.send_poll(
+    sent_poll = await callback.bot.send_poll(
         chat_id=POLL_CHANNEL_ID,
         message_thread_id=THREAD_CHANNEL_ID,
         question=question,
         options=options,
-        is_anonymous=True
+        is_anonymous=False
     )
 
     await callback.message.edit_text(f"Опрос создан! ID: {sent_poll.message_id}")

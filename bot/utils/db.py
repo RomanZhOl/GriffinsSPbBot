@@ -119,9 +119,11 @@ async def get_chat_by_position(position_name: str):
         position_id = pos_row[0]
 
         cursor = await db.execute(
-            "SELECT id, thread_id FROM chats WHERE position_id = ?",
+            "SELECT chat_id, thread_id FROM chats WHERE position_id = ?",
             (position_id,)
         )
         chat_row = await cursor.fetchone()
         if not chat_row:
             return None, None
+
+        return chat_row[0], chat_row[1]
