@@ -41,7 +41,7 @@ async def create_all_tables():
             surname TEXT NOT NULL,
             middlename TEXT,
             number TEXT,
-            tg_username TEXT UNIQUE,
+            tg_username TEXT,
             tg_id INTEGER UNIQUE,
             position_id INTEGER,
             status TEXT DEFAULT 'active',

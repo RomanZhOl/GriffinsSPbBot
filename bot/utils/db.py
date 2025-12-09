@@ -2,12 +2,15 @@ import aiosqlite
 from bot.config import DB_PATH
 
 
-async def insert_player(data: dict):
+async def insert_player(data: dict, role_ids: list[int] | None = None, db_path: str = DB_PATH) -> bool:
     """
-    Вставляет игрока в таблицу team.
+    Вставляет игрока в таблицу team и роли в player_roles.
     data — словарь с ключами:
-        name, surname, middlename, number, tg_username, tg_id, role_id, status
+        name, surname, middlename, number, tg_username, tg_id, position_id, status
+    role_ids — список id ролей (из таблицы roles), например [2] или [2,3]
+    Возвращает True, если игрок создан; False если игрок уже существует (по tg_id или tg_username).
     """
+
     async with aiosqlite.connect(DB_PATH) as db:
         # Проверка на дубликат по tg_id или tg_username
         query = "SELECT id FROM team WHERE tg_id = ? OR tg_username = ?"
@@ -17,7 +20,7 @@ async def insert_player(data: dict):
                 return False  # игрок уже есть
 
         # Вставка игрока
-        await db.execute(
+        cursor = await db.execute(
             """
             INSERT INTO team 
             (name, surname, middlename, number, tg_username, tg_id, position_id, status)
@@ -30,11 +33,22 @@ async def insert_player(data: dict):
                 data.get("number"),
                 data.get("tg_username"),
                 data.get("tg_id"),
-                data.get("role_id"),
                 data.get("position_id"),
                 data.get("status", "active")
             )
         )
+
+        player_id = cursor.lastrowid
+
+        # Вставка ролей (если есть)
+        if role_ids:
+            # Формируем кортежи (player_id, role_id)
+            values = [(player_id, int(rid)) for rid in role_ids]
+            await db.executemany(
+                "INSERT OR IGNORE INTO player_roles (player_id, role_id) VALUES (?, ?)",
+                values
+            )
+
         await db.commit()
         return True
 
