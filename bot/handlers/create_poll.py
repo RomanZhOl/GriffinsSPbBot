@@ -3,6 +3,8 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
+from bot.utils.db import get_chat_by_position
+from data.preset_polls import PRESET_POLLS, TOPIC_IDS
 from bot.utils.role_filter import RoleFilter
 from bot.utils.states import CreatePollStates
 
@@ -29,8 +31,36 @@ async def cancel_adding(message: Message, state: FSMContext):
     await message.answer("Создание опроса отменено.")
 
 #Вход в FSM
-@router.message(Command("create_poll"), RoleFilter(allowed_roles=["admin", "coach"]))
+@router.message(Command("poll"), RoleFilter(allowed_roles=["admin", "coach"]))
 async def start_create_poll(message: Message, state: FSMContext):
+    # Разбираем аргумент, если есть
+    parts = message.text.split(maxsplit=1)
+    args = parts[1].strip() if len(parts) > 1 else None
+
+    if args:
+        topic = args.upper()  # OL, QB и т.д.
+        if topic not in PRESET_POLLS:
+            await message.answer(f"Нет предустановленного опроса для топика {topic}.")
+            return
+
+        poll = PRESET_POLLS[topic]
+        chat_id, thread_id = await get_chat_by_position(topic)
+
+        if not chat_id:
+            await message.answer(f"Не удалось найти чат для топика {topic}.")
+            return
+
+        # Отправляем опрос в конкретный топик
+        await message.bot.send_poll(
+            chat_id=POLL_CHANNEL_ID,
+            message_thread_id=thread_id,
+            question=poll["question"],
+            options=poll["options"],
+            is_anonymous=True
+        )
+        await message.answer(f"Опрос для {topic} отправлен.")
+        return
+
     await state.set_state(CreatePollStates.question)
     keyboard = CANCEL_KEYBOARD
     await message.answer("Введите вопрос для опроса:",

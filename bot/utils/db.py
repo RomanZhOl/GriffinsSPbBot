@@ -105,3 +105,23 @@ async def list_players(db_path=DB_PATH):
     except Exception as e:
         print(f"Ошибка при получении списка игроков: {e}")
         return []
+
+async def get_chat_by_position(position_name: str):
+    """Возвращает кортеж (chat_id, thread_id) по названию позиции."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT id FROM positions WHERE position = ?",
+            (position_name,)
+        )
+        pos_row = await cursor.fetchone()
+        if not pos_row:
+            return None, None
+        position_id = pos_row[0]
+
+        cursor = await db.execute(
+            "SELECT id, thread_id FROM chats WHERE position_id = ?",
+            (position_id,)
+        )
+        chat_row = await cursor.fetchone()
+        if not chat_row:
+            return None, None
