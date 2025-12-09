@@ -11,6 +11,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 dp.include_router(add_player_router)
+dp.include_router(list_players_router)
 dp.include_router(create_poll_router)
 
 if __name__ == "__main__":

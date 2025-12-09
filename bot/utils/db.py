@@ -1,3 +1,5 @@
+import logging
+
 import aiosqlite
 from bot.config import DB_PATH
 
@@ -93,31 +95,35 @@ async def list_players(db_path=DB_PATH):
     try:
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
-            query = """SELECT
-                        t.id,
-                        t.name,
-                        t.surname,
-                        t.middlename,
-                        t.number,
-                        t.tg_username,
-                        t.tg_id,
-                        t.status,
-                        p.position,
-                        GROUP_CONCAT(r.role, ', ') as roles
-                    FROM team t
-                    LEFT JOIN positions p ON t.position_id = p.id
-                    LEFT JOIN player_roles pr ON t.id = pr.player_id
-                    LEFT JOIN roles r ON pr.role_id = r.id
-                    GROUP BY t.id
-                    ORDER BY t.name
-                """
-
+            query = """
+                SELECT
+                    t.id,
+                    t.name,
+                    t.surname,
+                    t.middlename,
+                    t.number,
+                    t.tg_username,
+                    t.tg_id,
+                    t.status,
+                    p.position,
+                    COALESCE(GROUP_CONCAT(r.role, ', '), '') as roles
+                FROM team t
+                LEFT JOIN positions p ON t.position_id = p.id
+                LEFT JOIN player_roles pr ON t.id = pr.player_id
+                LEFT JOIN roles r ON pr.role_id = r.id
+                GROUP BY t.id
+                ORDER BY t.name
+            """
             cursor = await db.execute(query)
             rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+            result = [dict(row) for row in rows]
+            logging.info(f"[list_players] Получено {len(result)} записей из базы")
+            for r in result:
+                logging.info(f"[list_players] {r}")
 
+            return result
     except Exception as e:
-        print(f"Ошибка при получении списка игроков: {e}")
+        logging.error(f"Ошибка при получении списка игроков: {e}")
         return []
 
 async def get_chat_by_position(position_name: str):
