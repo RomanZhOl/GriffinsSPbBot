@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
 from bot.utils.db import get_chat_by_position, get_all_chats
-from bot.utils.notifications import build_players_mention_text
+from bot.utils.notifications import build_players_mention_text, send_mentions_in_batches
 from bot.utils.poll_question import get_training_poll_question
 from bot.utils.role_filter import RoleFilter
 from bot.utils.states import CreatePollStates
@@ -45,17 +45,14 @@ async def quick_poll(message: Message, topic: str, notify_players: bool = False)
     """Быстрое создание опроса с предустановкой"""
     topic = topic.upper().strip()
 
-    # Определяем чат и тред по позиции
     chat_id, thread_id = await get_chat_by_position(topic)
     if not chat_id:
         await message.answer(f"Не удалось найти чат для топика {topic}.")
         return
 
-    # Формируем динамический вопрос по дню недели/времени
     question = get_training_poll_question(topic)
     options = ["Буду", "Не буду", "Тренер"]
 
-    # Отправляем опрос в конкретный топик
     await message.bot.send_poll(
         chat_id=chat_id,
         message_thread_id=thread_id,
@@ -63,16 +60,19 @@ async def quick_poll(message: Message, topic: str, notify_players: bool = False)
         options=options,
         is_anonymous=False
     )
+
     await message.answer(f"Опрос для {topic} отправлен.")
-    notify_players = True
-    # Уведомление игроков
+
     if notify_players:
-        mention_text = await build_players_mention_text(position=topic)
-    await message.bot.send_message(
-        chat_id=chat_id,
-        message_thread_id=thread_id,
-        text=f"Новый опрос! {mention_text}"
-    )
+        mentions = await build_players_mention_list(position=topic)
+
+        if mentions:
+            await send_mentions_in_batches(
+                bot=message.bot,
+                chat_id=chat_id,
+                thread_id=thread_id,
+                mentions=mentions
+            )
 
 
 async def interactive_poll(message: Message, state: FSMContext):
