@@ -87,7 +87,7 @@ async def get_user_role(tg_id: int) -> str | None:
 
         return row[0] if row else None
 
-async def list_players(db_path=DB_PATH):
+async def list_players(db_path=DB_PATH, only_active: bool = False):
     """
     Получаем список всех игроков/тренеров с их ролями.
     Роли возвращаются как строка через запятую: "admin, coach"
@@ -95,7 +95,15 @@ async def list_players(db_path=DB_PATH):
     try:
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
-            query = """
+
+            where_clause = ""
+            params = []
+
+            if only_active:
+                where_clause = "WHERE t.status = ?"
+                params.append("active")
+
+            query = f"""
                 SELECT
                     t.id,
                     t.name,
@@ -111,17 +119,15 @@ async def list_players(db_path=DB_PATH):
                 LEFT JOIN positions p ON t.position_id = p.id
                 LEFT JOIN player_roles pr ON t.id = pr.player_id
                 LEFT JOIN roles r ON pr.role_id = r.id
+                {where_clause}
                 GROUP BY t.id
                 ORDER BY t.name
             """
-            cursor = await db.execute(query)
+            cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
             result = [dict(row) for row in rows]
-            logging.info(f"[list_players] Получено {len(result)} записей из базы")
-            for r in result:
-                logging.info(f"[list_players] {r}")
-
             return result
+
     except Exception as e:
         logging.error(f"Ошибка при получении списка игроков: {e}")
         return []

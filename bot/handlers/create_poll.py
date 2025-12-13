@@ -4,11 +4,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
 from bot.utils.db import get_chat_by_position, get_all_chats
-from bot.utils.notifications import build_players_mention_text, send_mentions_in_batches
+from bot.utils.notifications import send_mentions_in_batches, build_players_mention_list
 from bot.utils.poll_question import get_training_poll_question
 from bot.utils.role_filter import RoleFilter
 from bot.utils.states import CreatePollStates
-
+import logging
 
 router = Router()
 
@@ -41,7 +41,7 @@ async def start_create_poll(message: Message, state: FSMContext):
     else:
         await interactive_poll(message, state)
 
-async def quick_poll(message: Message, topic: str, notify_players: bool = False):
+async def quick_poll(message: Message, topic: str, notify_players: bool = True):
     """Быстрое создание опроса с предустановкой"""
     topic = topic.upper().strip()
 
@@ -65,6 +65,7 @@ async def quick_poll(message: Message, topic: str, notify_players: bool = False)
 
     if notify_players:
         mentions = await build_players_mention_list(position=topic)
+        logging.info(f"[quick_poll] mentions={mentions}")
 
         if mentions:
             await send_mentions_in_batches(

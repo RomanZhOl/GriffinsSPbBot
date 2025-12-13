@@ -47,7 +47,7 @@ def format_person_line(person: dict, index: int, show_position: bool = True) -> 
     position_part = f" {person['position']}" if show_position and person.get('position') else ""
     number_part = f" #{person['number']}" if person.get('number') else ""
 
-    return f"{status_emoji}{index}. {name_part} — {position_part}{number_part} [{status_text}]\n"
+    return f"{status_emoji}{index}. {name_part} — {position_part}{number_part} [{status_text}] -- ID {person['id']} \n"
 
 
 

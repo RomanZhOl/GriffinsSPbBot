@@ -11,7 +11,10 @@ async def build_players_mention_list(
     Если у игрока есть tg_username — тегаем через @username,
     иначе выводим 'Имя Фамилия'.
     """
-    players = await list_players(db_path=db_path)
+    players = await list_players(
+        db_path=db_path,
+        only_active=True
+    )
     mentions: list[str] = []
 
     for p in players:
