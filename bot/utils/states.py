@@ -14,3 +14,15 @@ class CreatePollStates(StatesGroup):
     confirmation = State()
     chat = State()
     notify_players =State()
+
+class UpdatePlayerStates(StatesGroup):
+    id = State()
+    menu = State()
+    edit_name = State()
+    edit_surname = State()
+    edit_middlename = State()
+    edit_number = State()
+    edit_tg_username = State()
+    edit_position = State()
+    edit_status = State()
+    edit_field = State()

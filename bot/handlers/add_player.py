@@ -6,37 +6,12 @@ from aiogram.fsm.context import FSMContext
 from bot.utils.db import insert_player, get_positions
 from bot.utils.role_filter import RoleFilter
 from bot.utils.states import AddPlayerStates
+from bot.utils.keyboards import CANCEL_KEYBOARD, SKIP_KEYBOARD
+from bot.config import ROLE_COACH, ROLE_PLAYER
+
 import logging
 
-# Константы для ролей
-ROLE_COACH = 2
-ROLE_PLAYER = 3
-
 router = Router()
-
-CANCEL_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
-    ]
-)
-
-SKIP_KEYBOARD = keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="Пропустить", callback_data="skip")],
-        [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
-    ]
-)
-
-@router.callback_query(F.data == "cancel")
-async def cancel_adding_callback(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text("Добавление игрока отменено.")
-    await callback.answer()
-
-@router.message(Command("cancel"), RoleFilter(allowed_roles=["admin", "coach"]))
-async def cancel_adding(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Добавление игрока отменено.")
 
 @router.callback_query(F.data == "skip", AddPlayerStates.tg_username)
 async def skip_tg_username(callback: CallbackQuery, state: FSMContext):

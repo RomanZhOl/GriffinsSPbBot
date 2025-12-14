@@ -21,3 +21,7 @@ DEFAULT_ADMIN = {
     "position_id": int(os.getenv("ADMIN_POSITION_ID", 1)),
     "status": os.getenv("ADMIN_STATUS", "active")
 }
+
+# Константы для ролей
+ROLE_COACH = 2
+ROLE_PLAYER = 3

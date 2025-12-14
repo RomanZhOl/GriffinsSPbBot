@@ -167,3 +167,19 @@ async def get_all_chats(db_path: str = DB_PATH) -> list[tuple[int, int, str]]:
         rows = await cursor.fetchall()
         await cursor.close()
         return [(row[0], row[1], row[2]) for row in rows]
+
+async def get_player_by_id(player_id: int):
+    players = await list_players()
+    for player in players:
+        if player["id"] == player_id:
+            return player
+    return None
+
+
+async def update_player_field(player_id: int, field: str, value):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE team SET {field} = ? WHERE id = ?",
+            (value, player_id)
+        )
+        await db.commit()
