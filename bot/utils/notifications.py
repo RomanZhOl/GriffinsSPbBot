@@ -6,10 +6,11 @@ async def build_players_mention_list(
         db_path=DB_PATH
 ) -> list[str]:
     """
-    Формирует текст с упоминаниями игроков.
-    Если указан `position`, упоминаются только игроки с этой позицией.
-    Если у игрока есть tg_username — тегаем через @username,
-    иначе выводим 'Имя Фамилия'.
+    Формирует список упоминаний игроков.
+    - Если указан `position`, фильтрует по позиции.
+    - Если есть tg_username — упоминание через @username.
+    - Если нет username, но есть tg_id — упоминание через tg://user?id=.
+    - Если нет и tg_id — вывод 'Имя Фамилия'.
     """
     players = await list_players(
         db_path=db_path,
@@ -21,12 +22,21 @@ async def build_players_mention_list(
         if position and p.get("position") != position:
             continue
 
-        if p.get("tg_username"):
-            mentions.append(f"@{p['tg_username']}")
+        username = p.get("tg_username")
+        tg_id = p.get("tg_id")
+        name = p.get("name", "")
+        surname = p.get("surname", "")
+        full_name = f"{name} {surname}".strip()
+
+        if username:
+            mentions.append(f"@{username}")
+
+        elif tg_id:
+            # HTML-формат упоминания по ID
+            mentions.append(f'<a href="tg://user?id={tg_id}">{full_name}</a>')
+
         else:
-            name = p.get("name", "")
-            surname = p.get("surname", "")
-            mentions.append(f"{name} {surname}".strip())
+            mentions.append(full_name)
 
     return mentions
 
@@ -45,5 +55,6 @@ async def send_mentions_in_batches(
         await bot.send_message(
             chat_id=chat_id,
             message_thread_id=thread_id,
-            text=text
+            text=text,
+            parse_mode="HTML"   # обязательно для упоминаний через tg_id
         )

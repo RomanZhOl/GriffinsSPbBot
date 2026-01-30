@@ -151,14 +151,14 @@ async def handle_edit_callbacks(query: CallbackQuery, state: FSMContext):
 
     if action.startswith("position_"):
         position_id = int(action.split("_")[1])
-    await state.update_data(new_value=position_id)
-    if player_id:
-        await update_player_field(player_id, "position_id", position_id)
-        await state.set_state(UpdatePlayerStates.menu)
-        await state.update_data(new_value=None)
-        await query.message.answer(f"Позиция успешно обновлена.", reply_markup=get_field_inline_menu())
-    await query.answer()
-    return
+        await state.update_data(new_value=position_id)
+        if player_id:
+            await update_player_field(player_id, "position_id", position_id)
+            await state.set_state(UpdatePlayerStates.menu)
+            await state.update_data(new_value=None)
+            await query.message.answer(f"Позиция успешно обновлена.", reply_markup=get_field_inline_menu())
+        await query.answer()
+        return
 
 
     # Сохранение
